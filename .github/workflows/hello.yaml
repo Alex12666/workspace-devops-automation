@@ -10,4 +10,4 @@ jobs:
     runs-on: ubuntu-latest  # Corrigido: runs-on (com 's') e ubuntu (com 'u')
     steps:
       - name: exibir mensagem
-        run: echo "Hello, Alexandre! Automação DevOps funcionando." # Faltou o comando real
+        run: echo "segundo deploy" # Faltou o comando real
