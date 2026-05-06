@@ -3,11 +3,23 @@ name: hello
 on:
   push:
     branches:
-      - main  # O dois-pontos aqui é obrigatório
+      - main 
 
 jobs:
   say-hello:
-    runs-on: ubuntu-latest  # Corrigido: runs-on (com 's') e ubuntu (com 'u')
+    runs-on: ubuntu-latest  
+
+      
+
+
     steps:
+
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+
       - name: exibir mensagem
-        run: echo "segundo deploy" # Faltou o comando real
+        run: echo "teceiro deploy"
+
+      - name: Executa dockerfile
+        run: docker build -t imagem .
