@@ -36,13 +36,29 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
+      # 4. SSH e Deploy com Instalação Automática
       - name: SSH and Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}  # Nome exato que você salvou!
+          host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            # Instala Docker se não existir
+            if ! command -v docker &> /dev/null; then
+              sudo apt-get update -y
+              sudo apt-get install -y docker.io
+              sudo systemctl start docker
+              sudo systemctl enable docker
+              sudo usermod -aG docker ubuntu
+            fi
+
+            # Instala AWS CLI se não existir
+            if ! command -v aws &> /dev/null; then
+              sudo apt-get update -y
+              sudo apt-get install -y awscli
+            fi
+
             # Login no ECR dentro da máquina
             aws ecr get-login-password --region us-east-2 | sudo docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
             
