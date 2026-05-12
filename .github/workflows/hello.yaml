@@ -3,7 +3,7 @@ name: Deploy Frontend AWS
 on:
   push:
     branches:
-      - main # Confira se sua branch é 'main' ou 'master'
+      - main
 
 jobs:
   build-and-deploy:
@@ -13,7 +13,7 @@ jobs:
       - name: Checkout do código
         uses: actions/checkout@v4
 
-      # 1. Autenticação na AWS para o GitHub Actions
+      # 1. Autenticação na AWS para o GitHub Actions (Runner)
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -36,47 +36,37 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      # 4. SSH e Deploy com Injeção de Credenciais
+      # 4. SSH e Deploy - Versão Corrigida
       - name: SSH and Deploy
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          # Definimos as variáveis de ambiente aqui
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # Passa as chaves para dentro do ambiente SSH
-          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        with:
+          # O parâmetro 'envs' diz ao SSH para levar essas variáveis lá para dentro
+          envs: AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,ECR_REGISTRY
           script: |
-            # Instala Docker se não existir
+            # Instalação de dependências (caso necessário)
             if ! command -v docker &> /dev/null; then
-              sudo apt-get update -y
-              sudo apt-get install -y docker.io
+              sudo apt-get update -y && sudo apt-get install -y docker.io
               sudo systemctl start docker
               sudo systemctl enable docker
               sudo usermod -aG docker ubuntu
             fi
-
-            # Instala AWS CLI se não existir
             if ! command -v aws &> /dev/null; then
-              sudo apt-get update -y
-              sudo apt-get install -y awscli
+              sudo apt-get update -y && sudo apt-get install -y awscli
             fi
 
-            # Exporta as chaves para o AWS CLI local da máquina usar
-            export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-            export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-            export AWS_DEFAULT_REGION=us-east-2
-
-            # Login no ECR dentro da máquina usando as chaves exportadas
-            aws ecr get-login-password --region us-east-2 | sudo docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+            # Login no ECR usando as chaves injetadas
+            aws ecr get-login-password --region us-east-2 | sudo docker login --username AWS --password-stdin $ECR_REGISTRY
             
-            # Limpa containers antigos
+            # Atualização do Container
             sudo docker stop frontend-app || true
             sudo docker rm frontend-app || true
-            
-            # Pull e Run (Usa o registro vindo do step de login)
-            sudo docker pull ${{ steps.login-ecr.outputs.registry }}/my-imagem:latest
-            sudo docker run -d --name frontend-app -p 80:80 ${{ steps.login-ecr.outputs.registry }}/my-imagem:latest
+            sudo docker pull $ECR_REGISTRY/my-imagem:latest
+            sudo docker run -d --name frontend-app -p 80:80 $ECR_REGISTRY/my-imagem:latest
