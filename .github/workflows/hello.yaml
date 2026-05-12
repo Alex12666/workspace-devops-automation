@@ -1,25 +1,55 @@
-name: hello
+name: Deploy Frontend AWS
 
 on:
   push:
     branches:
-      - main 
+      - main # Confira se sua branch é 'main' ou 'master'
 
 jobs:
-  say-hello:
-    runs-on: ubuntu-latest  
-
-      
-
+  build-and-deploy:
+    runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout do código
         uses: actions/checkout@v4
 
+      # 1. Autenticação na AWS
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
 
-      - name: exibir mensagem
-        run: echo "teceiro deploy"
+      # 2. Login no Amazon ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Executa dockerfile
-        run: docker build -t imagem .
+      # 3. Build e Push da Imagem
+      - name: Build and Push to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: my-imagem
+          IMAGE_TAG: latest
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      - name: SSH and Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}  # Nome exato que você salvou!
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Login no ECR dentro da máquina
+            aws ecr get-login-password --region us-east-2 | sudo docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+            
+            # Limpa containers antigos
+            sudo docker stop frontend-app || true
+            sudo docker rm frontend-app || true
+            
+            # Pull e Run
+            sudo docker pull ${{ steps.login-ecr.outputs.registry }}/my-imagem:latest
+            sudo docker run -d --name frontend-app -p 80:80 ${{ steps.login-ecr.outputs.registry }}/my-imagem:latest
